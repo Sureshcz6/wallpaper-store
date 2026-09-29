@@ -7,7 +7,7 @@ import { buildWaMeLink } from "@/lib/whatsapp";
 import { Navbar } from "@/components/ui/Navbar";
 import { Footer } from "@/components/ui/Footer";
 import { ProductGrid } from "@/components/product/ProductGrid";
-import { serializeProduct } from "@/app/api/products/route";
+import { serializeProduct } from "@/lib/serialize-product";
 
 export const revalidate = 30;
 

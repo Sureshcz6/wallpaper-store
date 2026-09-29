@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { serializeProduct } from "@/app/api/products/route";
+import { serializeProduct } from "@/lib/serialize-product";
 import { Navbar } from "@/components/ui/Navbar";
 import { Footer } from "@/components/ui/Footer";
 import { ProductGrid } from "@/components/product/ProductGrid";
