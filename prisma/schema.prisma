@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------- Admin ----------
+model Admin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ---------- Catalog ----------
+model Category {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  products  Product[]
+  createdAt DateTime  @default(now())
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id])
+
+  shortDescription String
+  fullDescription  String @db.Text
+
+  price         Int // paise (INR minor unit) - selling price
+  originalPrice Int // paise - MRP, used to derive discount %
+
+  thumbnailUrl String
+  gallery      ProductImage[]
+  previewVideoUrl String?
+
+  features       Json  // string[]
+  whatsIncluded  Json  // string[]
+  faqs           Json  // {question, answer}[]
+  tags           Json  // string[]
+
+  files          ProductFile[]
+  externalDeliveryUrl String?
+
+  seoTitle       String?
+  seoDescription String?
+
+  status       ProductStatus @default(DRAFT)
+  isFeatured   Boolean       @default(false)
+  isBestseller Boolean       @default(false)
+  isLimitedOffer Boolean     @default(false)
+
+  whatsappMessageTemplate String?
+  deliveryInstructions    String? @db.Text
+
+  downloadLimit  Int? // null = unlimited
+  linkExpiryHours Int? // null = never expires
+
+  reviews Review[]
+  orders  Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([createdAt])
+}
+
+enum ProductStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  sortOrder Int     @default(0)
+}
+
+model ProductFile {
+  id         String  @id @default(cuid())
+  productId  String
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  storageKey String // key/path in object storage, never a public permanent URL
+  fileName   String
+  fileSize   Int
+}
+
+// ---------- Orders & Payments ----------
+model Order {
+  id          String  @id @default(cuid())
+  orderNumber String  @unique
+
+  customerName  String
+  customerEmail String
+  customerPhone String
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  couponId String?
+  coupon   Coupon? @relation(fields: [couponId], references: [id])
+
+  amount   Int // final amount paid, paise
+  currency String @default("INR")
+
+  razorpayOrderId   String? @unique
+  razorpayPaymentId String? @unique
+  razorpaySignature String?
+
+  paymentStatus  PaymentStatus  @default(CREATED)
+  deliveryStatus DeliveryStatus @default(PENDING)
+
+  downloadToken     String?   @unique
+  downloadExpiresAt DateTime?
+  downloadCount     Int       @default(0)
+
+  whatsappSent   Boolean @default(false)
+  webhookEventIds Json?  // processed webhook event ids, for idempotency
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([paymentStatus])
+  @@index([razorpayOrderId])
+  @@index([razorpayPaymentId])
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum DeliveryStatus {
+  PENDING
+  AVAILABLE
+  DELIVERED
+  EXPIRED
+}
+
+// ---------- Reviews ----------
+model Review {
+  id                String       @id @default(cuid())
+  productId         String
+  product           Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name              String
+  rating            Int // 1-5
+  reviewText         String       @db.Text
+  verifiedPurchase  Boolean      @default(false)
+  status            ReviewStatus @default(PENDING)
+  isFeatured        Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ---------- Coupons ----------
+model Coupon {
+  id               String       @id @default(cuid())
+  code             String       @unique
+  discountType     DiscountType
+  percentage       Int?
+  fixedAmount      Int? // paise
+  minimumOrder     Int? // paise
+  maximumDiscount  Int? // paise
+  startDate        DateTime?
+  expiryDate       DateTime?
+  usageLimit       Int?
+  perCustomerLimit Int?
+  isActive         Boolean      @default(true)
+
+  usages Order[]
+
+  createdAt DateTime @default(now())
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+// ---------- Settings ----------
+model SiteSetting {
+  id                String  @id @default("singleton")
+  websiteName       String  @default("Digital Marketplace")
+  logoUrl           String?
+  faviconUrl        String?
+  primaryColorHex   String  @default("#7C5CFF")
+  currency          String  @default("INR")
+  supportWhatsapp   String?
+  supportEmail      String?
+  termsContent      String? @db.Text
+  privacyContent    String? @db.Text
+  refundContent     String? @db.Text
+}
+
+model WhatsAppSetting {
+  id                String  @id @default("singleton")
+  provider          String? // e.g. "meta_cloud_api"
+  phoneNumberId     String?
+  businessAccountId String?
+  accessTokenSet    Boolean @default(false) // whether a token is configured; the real token lives only in env/secret store
+  messageTemplate   String  @default("Hello {{customer_name}}, thank you for purchasing {{product_name}}. Order ID: {{order_id}}. Amount: ₹{{amount}}. Your digital product is ready: {{delivery_link}}")
+  automationEnabled Boolean @default(false)
+}
