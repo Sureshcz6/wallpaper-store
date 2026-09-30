@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
-import argon2 from "argon2";
+import { hash, verify } from "@node-rs/argon2";
 
 const COOKIE_NAME = "admin_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8 hours
@@ -14,12 +14,12 @@ function getSecretKey() {
 }
 
 export async function hashPassword(plain: string): Promise<string> {
-  return argon2.hash(plain);
+  return hash(plain);
 }
 
-export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
+export async function verifyPassword(password: string, passwordHash: string) {
   try {
-    return await argon2.verify(hash, plain);
+    return await verify(passwordHash, password);
   } catch {
     return false;
   }
