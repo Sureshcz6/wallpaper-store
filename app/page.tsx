@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { serializeProduct } from "@/lib/product-serializer";
+import { serializeProduct } from "@/lib/serializeProduct";
 import { Navbar } from "@/components/ui/Navbar";
 import { Footer } from "@/components/ui/Footer";
 import { ProductGrid } from "@/components/product/ProductGrid";
@@ -13,17 +13,9 @@ export default async function HomePage() {
       where: { status: "PUBLISHED" },
       orderBy: { createdAt: "desc" },
       take: 8,
-      include: {
-        category: true,
-        reviews: {
-          where: { status: "APPROVED" },
-        },
-      },
+      include: { category: true, reviews: { where: { status: "APPROVED" } } }
     }),
-
-    prisma.category.findMany({
-      orderBy: { name: "asc" },
-    }),
+    prisma.category.findMany({ orderBy: { name: "asc" } })
   ]);
 
   const products = featured.map(serializeProduct);
@@ -32,34 +24,20 @@ export default async function HomePage() {
   return (
     <>
       <Navbar />
-
       <main>
         <section className="mx-auto max-w-6xl px-5 pb-16 pt-16 md:pt-24">
-          <p className="text-sm text-accent-2">
-            Instant access, no account needed
-          </p>
-
+          <p className="text-sm text-accent-2">Instant access, no account needed</p>
           <h1 className="mt-3 max-w-2xl font-display text-4xl leading-tight text-ink md:text-6xl">
             Premium digital products, delivered the moment you pay.
           </h1>
-
           <p className="mt-4 max-w-lg text-muted">
-            AI resource bundles, content packs, templates and more —
-            browse, pay with Razorpay, and get your files right away.
+            AI resource bundles, content packs, templates and more — browse, pay with Razorpay, and get your files right away.
           </p>
-
           <div className="mt-8 flex gap-4">
-            <Link
-              href="/products"
-              className="rounded-full bg-accent px-6 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90"
-            >
+            <Link href="/products" className="rounded-full bg-accent px-6 py-3 text-sm font-medium text-white hover:opacity-90 transition-opacity">
               Explore Products
             </Link>
-
-            <Link
-              href="/products?sort=popular"
-              className="rounded-full border border-border px-6 py-3 text-sm text-ink transition-colors hover:border-accent"
-            >
+            <Link href="/products?sort=popular" className="rounded-full border border-border px-6 py-3 text-sm text-ink hover:border-accent transition-colors">
               View Best Sellers
             </Link>
           </div>
@@ -72,7 +50,7 @@ export default async function HomePage() {
                 <Link
                   key={c.id}
                   href={`/products?category=${c.slug}`}
-                  className="rounded-full border border-border px-4 py-1.5 text-sm text-muted transition-colors hover:border-accent hover:text-ink"
+                  className="rounded-full border border-border px-4 py-1.5 text-sm text-muted hover:border-accent hover:text-ink transition-colors"
                 >
                   {c.name}
                 </Link>
@@ -83,18 +61,11 @@ export default async function HomePage() {
 
         <section className="mx-auto max-w-6xl px-5 pb-24">
           <div className="mb-6 flex items-center justify-between">
-            <h2 className="font-display text-2xl text-ink">
-              Latest products
-            </h2>
-
-            <Link
-              href="/products"
-              className="text-sm text-muted transition-colors hover:text-ink"
-            >
+            <h2 className="font-display text-2xl text-ink">Latest products</h2>
+            <Link href="/products" className="text-sm text-muted hover:text-ink transition-colors">
               View all
             </Link>
           </div>
-
           {hasProducts ? (
             <ProductGrid products={products} />
           ) : (
@@ -104,7 +75,6 @@ export default async function HomePage() {
           )}
         </section>
       </main>
-
       <Footer />
     </>
   );

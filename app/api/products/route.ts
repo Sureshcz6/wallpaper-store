@@ -2,290 +2,239 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { productSchema } from "@/lib/validation";
 import { getAdminSession } from "@/lib/auth";
-import { serializeProduct } from "@/lib/product-serializer";
+import { serializeProduct } from "@/lib/serializeProduct";
 
-export const dynamic = "force-dynamic";
+/** Public product listing: search, category filter, sort, pagination. Only PUBLISHED products. */
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
 
-/**
- * GET /api/products
- *
- * Public product listing.
- * Supports:
- * - search
- * - category
- * - sort
- * - pagination
- */
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
+  const q = searchParams.get("q")?.trim();
+  const category = searchParams.get("category");
+  const sort = searchParams.get("sort") ?? "newest";
 
-    const search = searchParams.get("search")?.trim() || "";
-    const category = searchParams.get("category")?.trim() || "";
-    const sort = searchParams.get("sort") || "newest";
+  const page = Math.max(
+    1,
+    Number(searchParams.get("page") ?? "1")
+  );
 
-    const page = Math.max(
-      1,
-      Number.parseInt(searchParams.get("page") || "1", 10) || 1
-    );
+  const pageSize = 24;
 
-    const limit = Math.min(
-      100,
-      Math.max(
-        1,
-        Number.parseInt(searchParams.get("limit") || "20", 10) || 20
-      )
-    );
+  const where: any = {
+    status: "PUBLISHED",
+  };
 
-    const skip = (page - 1) * limit;
-
-    const where: any = {
-      status: "PUBLISHED",
+  if (category) {
+    where.category = {
+      slug: category,
     };
-
-    if (search) {
-      where.OR = [
-        {
-          name: {
-            contains: search,
-            mode: "insensitive",
-          },
-        },
-        {
-          shortDescription: {
-            contains: search,
-            mode: "insensitive",
-          },
-        },
-        {
-          fullDescription: {
-            contains: search,
-            mode: "insensitive",
-          },
-        },
-      ];
-    }
-
-    if (category) {
-      where.categoryId = category;
-    }
-
-    let orderBy: any = {
-      createdAt: "desc",
-    };
-
-    switch (sort) {
-      case "oldest":
-        orderBy = {
-          createdAt: "asc",
-        };
-        break;
-
-      case "price-low":
-        orderBy = {
-          price: "asc",
-        };
-        break;
-
-      case "price-high":
-        orderBy = {
-          price: "desc",
-        };
-        break;
-
-      case "popular":
-        orderBy = {
-          isBestseller: "desc",
-        };
-        break;
-
-      case "featured":
-        orderBy = {
-          isFeatured: "desc",
-        };
-        break;
-
-      case "newest":
-      default:
-        orderBy = {
-          createdAt: "desc",
-        };
-        break;
-    }
-
-    const [products, total] = await Promise.all([
-      prisma.product.findMany({
-        where,
-        include: {
-          category: true,
-          gallery: true,
-          files: true,
-        },
-        orderBy,
-        skip,
-        take: limit,
-      }),
-
-      prisma.product.count({
-        where,
-      }),
-    ]);
-
-    return NextResponse.json({
-      success: true,
-      products: products.map(serializeProduct),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  } catch (error) {
-    console.error("GET /api/products error:", error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to fetch products",
-      },
-      {
-        status: 500,
-      }
-    );
   }
-}
 
-/**
- * POST /api/products
- *
- * Admin-only product creation.
- */
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getAdminSession();
-
-    if (!session) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Unauthorized",
+  if (q) {
+    where.OR = [
+      {
+        name: {
+          contains: q,
+          mode: "insensitive",
         },
-        {
-          status: 401,
-        }
-      );
-    }
-
-    const body = await request.json();
-
-    const parsed = productSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Validation failed",
-          details: parsed.error.flatten(),
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    const data = parsed.data;
-
-    const existingProduct = await prisma.product.findUnique({
-      where: {
-        slug: data.slug,
       },
-    });
-
-    if (existingProduct) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "A product with this slug already exists",
+      {
+        shortDescription: {
+          contains: q,
+          mode: "insensitive",
         },
-        {
-          status: 409,
-        }
-      );
-    }
-
-    const product = await prisma.product.create({
-      data: {
-        name: data.name,
-        slug: data.slug,
-
-        categoryId: data.categoryId,
-
-        shortDescription: data.shortDescription || "",
-        fullDescription: data.fullDescription || "",
-
-        price: data.price,
-        originalPrice: data.originalPrice,
-
-        thumbnailUrl: data.thumbnailUrl || "",
-        previewVideoUrl: data.previewVideoUrl || null,
-
-        features: data.features || [],
-        whatsIncluded: data.whatsIncluded || [],
-        faqs: data.faqs || [],
-        tags: data.tags || [],
-
-        externalDeliveryUrl: data.externalDeliveryUrl || null,
-
-        seoTitle: data.seoTitle || null,
-        seoDescription: data.seoDescription || null,
-
-        status: data.status,
-
-        isFeatured: data.isFeatured ?? false,
-        isBestseller: data.isBestseller ?? false,
-        isLimitedOffer: data.isLimitedOffer ?? false,
-
-        whatsappMessageTemplate:
-          data.whatsappMessageTemplate || null,
-
-        deliveryInstructions:
-          data.deliveryInstructions || null,
-
-        downloadLimit:
-          data.downloadLimit ?? null,
-
-        linkExpiryHours:
-          data.linkExpiryHours ?? null,
       },
+      {
+        tags: {
+          array_contains: q,
+        },
+      },
+    ];
+  }
 
+  const orderBy =
+    sort === "price_low"
+      ? { price: "asc" as const }
+      : sort === "price_high"
+        ? { price: "desc" as const }
+        : sort === "popular"
+          ? {
+              orders: {
+                _count: "desc" as const,
+              },
+            }
+          : {
+              createdAt: "desc" as const,
+            };
+
+  const [items, total] = await Promise.all([
+    prisma.product.findMany({
+      where,
+      orderBy: orderBy as any,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
       include: {
         category: true,
-        gallery: true,
-        files: true,
+        reviews: {
+          where: {
+            status: "APPROVED",
+          },
+        },
       },
-    });
+    }),
 
-    return NextResponse.json(
-      {
-        success: true,
-        product: serializeProduct(product),
-      },
-      {
-        status: 201,
-      }
-    );
-  } catch (error) {
-    console.error("POST /api/products error:", error);
+    prisma.product.count({
+      where,
+    }),
+  ]);
 
+  const products = items.map(serializeProduct);
+
+  return NextResponse.json({
+    products,
+    total,
+    page,
+    pageSize,
+  });
+}
+
+/** Admin: create a product with digital files. */
+export async function POST(req: NextRequest) {
+  const session = await getAdminSession();
+
+  if (!session) {
     return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to create product",
-      },
-      {
-        status: 500,
-      }
+      { error: "Unauthorized" },
+      { status: 401 }
     );
   }
+
+  const body = await req.json().catch(() => null);
+
+  const parsed = productSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        error: "Invalid product data.",
+        issues: parsed.error.flatten(),
+      },
+      { status: 400 }
+    );
+  }
+
+  const data = parsed.data;
+
+  const existingSlug = await prisma.product.findUnique({
+    where: {
+      slug: data.slug,
+    },
+  });
+
+  if (existingSlug) {
+    return NextResponse.json(
+      {
+        error: "A product with this slug already exists.",
+      },
+      { status: 409 }
+    );
+  }
+
+  // Uploaded files received from Supabase Storage
+  const files = Array.isArray(body?.files)
+    ? body.files
+    : [];
+
+  if (files.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Please upload at least one digital product file first.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const validFiles = files.filter(
+    (file: any) =>
+      file &&
+      typeof file.storageKey === "string" &&
+      file.storageKey.trim() &&
+      typeof file.fileName === "string" &&
+      file.fileName.trim() &&
+      Number.isInteger(file.fileSize) &&
+      file.fileSize > 0
+  );
+
+  if (validFiles.length === 0) {
+    return NextResponse.json(
+      {
+        error: "Uploaded file information is invalid.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const product = await prisma.product.create({
+    data: {
+      name: data.name,
+      slug: data.slug,
+      categoryId: data.categoryId,
+
+      shortDescription: data.shortDescription,
+      fullDescription: data.fullDescription,
+
+      price: data.price,
+      originalPrice: data.originalPrice,
+
+      thumbnailUrl: data.thumbnailUrl,
+      previewVideoUrl:
+        data.previewVideoUrl || null,
+
+      features: data.features,
+      whatsIncluded: data.whatsIncluded,
+      faqs: data.faqs,
+      tags: data.tags,
+
+      externalDeliveryUrl:
+        data.externalDeliveryUrl || null,
+
+      seoTitle: data.seoTitle,
+      seoDescription: data.seoDescription,
+
+      status: data.status,
+
+      isFeatured: data.isFeatured,
+      isBestseller: data.isBestseller,
+      isLimitedOffer: data.isLimitedOffer,
+
+      whatsappMessageTemplate:
+        data.whatsappMessageTemplate,
+
+      deliveryInstructions:
+        data.deliveryInstructions,
+
+      downloadLimit:
+        data.downloadLimit ?? null,
+
+      linkExpiryHours:
+        data.linkExpiryHours ?? null,
+
+      // Save uploaded files in ProductFile
+      files: {
+        create: validFiles.map((file: any) => ({
+          storageKey: file.storageKey,
+          fileName: file.fileName,
+          fileSize: file.fileSize,
+        })),
+      },
+    },
+
+    include: {
+      files: true,
+    },
+  });
+
+  return NextResponse.json({
+    product,
+  });
 }
