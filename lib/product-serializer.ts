@@ -5,12 +5,12 @@ export function serializeProduct(p: any) {
 
   const avgRating = reviews.length
     ? Math.round(
-        (
-          reviews.reduce(
-            (s: number, r: any) => s + r.rating,
-            0
-          ) / reviews.length
-        ) * 10
+        (reviews.reduce(
+          (sum: number, review: any) => sum + review.rating,
+          0
+        ) /
+          reviews.length) *
+          10
       ) / 10
     : 0;
 
